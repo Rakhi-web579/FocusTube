@@ -1,0 +1,11 @@
+# Node modules
+FocusTube/Backend/node_modules/
+FocusTube/Frontend/node_modules/
+
+# Environment files
+FocusTube/Backend/.env
+FocusTube/Frontend/.env
+
+# Optional: logs & system files
+*.log
+.DS_Store
