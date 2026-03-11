@@ -21,7 +21,7 @@ function isRelatedToGoal(query, goal) {
 
 function VideoCard({ video, onWatch }) {
   return (
-    <div className="bg-dark-800 border border-dark-500 rounded-xl overflow-hidden hover:border-dark-400 transition-all group animate-slide-up">
+    <div className="bg-dark-800 border border-dark-500 rounded-xl overflow-hidden hover:border-dark-400 transition-all group animate-slide-up cursor-pointer" onClick={() => onWatch(video)}>
       <div className="relative">
         <img
           src={video.thumbnail}
