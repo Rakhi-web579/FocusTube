@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSession } from '../context/SessionContext';
 import { startSession, recordDistraction } from '../services/api';
@@ -17,11 +17,18 @@ export default function Player() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
-
+  const [pauseCount, setPauseCount] = useState(0);
+  const [rewindCount, setRewindCount] = useState(0);
+  const [showDifficultyAlert, setShowDifficultyAlert] = useState(false);
+  const [difficultyType, setDifficultyType] = useState('');
   const timerRef = useRef(null);
   const sessionIdRef = useRef(null);
   const playerRef = useRef(null);
-  const progressRef = useRef(null);
+const progressRef = useRef(null);
+  const lastTimeRef = useRef(0);
+  const rewindCountRef = useRef(0);
+  const pauseCountRef = useRef(0);
+  const sessionStartedRef = useRef(false);
 
   // Start backend session
   useEffect(() => {
@@ -49,14 +56,16 @@ export default function Player() {
   useEffect(() => {
     if (!videoId) return;
 
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(tag);
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    }
 
     window.onYouTubeIframeAPIReady = () => {
       playerRef.current = new window.YT.Player('yt-player', {
         videoId,
-        playerVars: {
+       playerVars: {
           autoplay: 1,
           modestbranding: 1,
           rel: 0,
@@ -65,18 +74,47 @@ export default function Player() {
           fs: 1,
           iv_load_policy: 3,
           cc_load_policy: 0,
+          controls: 1,
         },
         events: {
-          onReady: () => {
+    onReady: () => {
             setPlayerReady(true);
             setIsRunning(true);
             setSessionStarted(true);
+            sessionStartedRef.current = true;
           },
           onStateChange: (event) => {
-            // YT.PlayerState.ENDED = 0
-            if (event.data === 0) {
+            if (event.data === 0) {       // ended
               setVideoProgress(100);
               handleVideoEnd();
+            }
+            if (event.data === 2) {       // paused
+              setIsRunning(false);
+              pauseCountRef.current += 1;
+              setPauseCount(pauseCountRef.current);
+              if (pauseCountRef.current >= 4) {
+                setDifficultyType('pause');
+                setShowDifficultyAlert(true);
+                pauseCountRef.current = 0;
+              }
+            }
+         if (event.data === 1) {       // playing
+              setIsRunning(true);
+              try {
+                const currentTime = playerRef.current?.getCurrentTime() || 0;
+                // only flag as rewind if jumped back more than 8 seconds
+                if (lastTimeRef.current > 8 && currentTime < lastTimeRef.current - 8) {
+                  rewindCountRef.current += 1;
+                  setRewindCount(rewindCountRef.current);
+                  if (rewindCountRef.current >= 3) {
+                    setDifficultyType('rewind');
+                    setShowDifficultyAlert(true);
+                    rewindCountRef.current = 0;
+                    pauseCountRef.current = 0;
+                  }
+                }
+                lastTimeRef.current = currentTime;
+              } catch (e) {}
             }
           },
         },
@@ -97,16 +135,17 @@ export default function Player() {
 
   // Track video progress
   useEffect(() => {
-    const trackProgress = () => {
+  const trackProgress = () => {
       if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
         try {
           const current = playerRef.current.getCurrentTime();
           const total = playerRef.current.getDuration();
           if (total > 0) setVideoProgress(Math.round((current / total) * 100));
+          lastTimeRef.current = current;
         } catch (e) {}
       }
     };
-    progressRef.current = setInterval(trackProgress, 3000);
+    progressRef.current = setInterval(trackProgress, 1000);
     return () => clearInterval(progressRef.current);
   }, []);
 
@@ -130,10 +169,24 @@ export default function Player() {
     return () => clearInterval(timerRef.current);
   }, [isRunning]);
 
-  // Tab visibility detection
+// Tab visibility + fullscreen detection
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden && sessionStarted) {
+      if (document.hidden && sessionStartedRef.current) {
+        setDistractions(prev => {
+          const newCount = prev + 1;
+          if (sessionIdRef.current) recordDistraction(sessionIdRef.current);
+          updateSession({ distractions: newCount });
+          return newCount;
+        });
+        setShowDistractAlert(true);
+        setTimeout(() => setShowDistractAlert(false), 4000);
+      }
+    };
+
+    // catches tab switch when video is fullscreen
+    const handleWindowBlur = () => {
+      if (sessionStartedRef.current && document.fullscreenElement) {
         setDistractions(prev => {
           const newCount = prev + 1;
           if (sessionIdRef.current) recordDistraction(sessionIdRef.current);
@@ -146,8 +199,12 @@ export default function Player() {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [sessionStarted]);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, []);
 
   const handleVideoEnd = () => {
     clearInterval(timerRef.current);
@@ -228,7 +285,7 @@ export default function Player() {
         {/* Video player */}
         <div className="flex-1 flex flex-col">
           <div className="relative bg-black rounded-xl overflow-hidden" style={{ aspectRatio: '16/9' }}>
-            {!playerReady && (
+        {!playerReady && (
               <div className="absolute inset-0 flex items-center justify-center bg-dark-800">
                 <div className="text-center">
                   <svg className="w-8 h-8 animate-spin text-green-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
@@ -240,6 +297,15 @@ export default function Player() {
               </div>
             )}
             <div id="yt-player" className="w-full h-full" />
+            {!isRunning && playerReady && (
+              <div
+                className="absolute inset-0 bg-transparent z-10 cursor-pointer"
+                onClick={() => {
+                  playerRef.current?.playVideo();
+                  setIsRunning(true);
+                }}
+              />
+            )}
           </div>
 
           {/* Video info */}
@@ -335,6 +401,81 @@ export default function Player() {
         </div>
       </div>
 
+      {/* Difficulty alert */}
+      {showDifficultyAlert && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-800 border border-purple-500/40 rounded-2xl p-6 max-w-md w-full animate-slide-up shadow-2xl">
+
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="text-3xl">🤔</div>
+              <div>
+                <h3 className="text-white font-bold text-lg">Facing Difficulties?</h3>
+                <p className="text-gray-400 text-xs mt-0.5">
+                  {difficultyType === 'pause'
+                    ? `You've paused ${pauseCount + 4} times — seems like something is unclear.`
+                    : `You've rewound the same section ${rewindCount + 3} times — let's simplify this.`}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick help options */}
+            <div className="grid grid-cols-2 gap-3 mb-5">
+
+              <div className="bg-dark-700 border border-dark-500 rounded-xl p-3">
+                <div className="text-xl mb-1">🗺️</div>
+                <p className="text-white text-xs font-medium mb-1">Visual Flowchart</p>
+                <p className="text-gray-500 text-xs">Break the concept into a step-by-step diagram</p>
+                <button
+               onClick={() => {
+                    const query = encodeURIComponent(`${session.goal} flowchart diagram`);
+                    window.open(`https://www.google.com/search?q=${query}&tbm=isch`, '_blank');
+                  }}
+                  className="mt-2 text-xs bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-400 px-2 py-1 rounded-lg transition-all w-full"
+                >
+                  Search Diagrams →
+                </button>
+              </div>
+
+              <div className="bg-dark-700 border border-dark-500 rounded-xl p-3">
+                <div className="text-xl mb-1">📝</div>
+                <p className="text-white text-xs font-medium mb-1">Quick Notes</p>
+                <p className="text-gray-500 text-xs">Write down what's confusing to revisit later</p>
+                <button
+                onClick={() => {
+                    const query = encodeURIComponent(`${session.goal}`);
+                    window.open(`https://en.wikipedia.org/w/index.php?search=${query}`, '_blank');
+                  }}
+                  className="mt-2 text-xs bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 text-yellow-400 px-2 py-1 rounded-lg transition-all w-full"
+                >
+                  Open Wikipedia →
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDifficultyAlert(false)}
+                className="flex-1 bg-dark-600 border border-dark-400 text-gray-300 py-2.5 rounded-xl text-sm hover:bg-dark-500 transition-colors"
+              >
+                I'm fine, keep going
+              </button>
+              <button
+                onClick={() => {
+                  setShowDifficultyAlert(false);
+                  if (playerRef.current) playerRef.current.playVideo();
+                  setIsRunning(true);
+                }}
+                className="flex-1 bg-purple-500 hover:bg-purple-400 text-white font-bold py-2.5 rounded-xl text-sm transition-all"
+              >
+                Resume Video →
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
       {/* Distraction alert */}
       {showDistractAlert && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-slide-up">

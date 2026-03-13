@@ -20,7 +20,8 @@ export default function Home() {
   const navigate = useNavigate();
   const { updateSession } = useSession();
   const [goal, setGoal] = useState('');
-  const [duration, setDuration] = useState(25);
+ const [duration, setDuration] = useState(25);
+  const [customInput, setCustomInput] = useState('');
   const [error, setError] = useState('');
   const [exampleIndex, setExampleIndex] = useState(0);
 
@@ -104,19 +105,18 @@ export default function Home() {
               ))}
             </div>
           </div>
-
-          {/* Duration selector */}
+{/* Duration selector */}
           <div className="mb-8">
             <label className="block text-sm font-medium text-gray-300 mb-3">
               Focus session duration
             </label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3 mb-3">
               {DURATION_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
-                  onClick={() => setDuration(opt.value)}
+                  onClick={() => { setDuration(opt.value); setCustomInput(''); }}
                   className={`py-3 px-4 rounded-xl border text-center transition-all ${
-                    duration === opt.value
+                    duration === opt.value && !customInput
                       ? 'bg-green-500/10 border-green-500 text-green-400'
                       : 'bg-dark-700 border-dark-400 text-gray-400 hover:border-dark-300'
                   }`}
@@ -126,6 +126,40 @@ export default function Home() {
                 </button>
               ))}
             </div>
+
+            {/* Custom duration input */}
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="300"
+                placeholder="Or type custom minutes (1–300)..."
+                value={customInput}
+                onChange={(e) => {
+                  setCustomInput(e.target.value);
+                  const val = parseInt(e.target.value);
+                  if (val >= 1 && val <= 300) setDuration(val);
+                }}
+                className={`flex-1 bg-dark-700 border rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none transition-colors ${
+                  customInput ? 'border-green-500' : 'border-dark-400 focus:border-green-500'
+                }`}
+              />
+              {customInput && (
+                <button
+                  onClick={() => { setCustomInput(''); setDuration(25); }}
+                  className="text-xs px-3 py-2.5 rounded-xl border border-dark-400 text-gray-500 hover:text-gray-300 transition-all"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {customInput && parseInt(customInput) >= 1 && parseInt(customInput) <= 300 && (
+              <p className="text-green-400 text-xs mt-1.5">✓ {customInput} minutes selected</p>
+            )}
+            {customInput && (isNaN(parseInt(customInput)) || parseInt(customInput) < 1 || parseInt(customInput) > 300) && (
+              <p className="text-red-400 text-xs mt-1.5">⚠ Enter a value between 1 and 300 minutes</p>
+            )}
           </div>
 
           {/* CTA Button */}
