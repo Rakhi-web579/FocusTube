@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../context/SessionContext';
 import { completeSession } from '../services/api';
+import { saveSession } from '../services/streak'; // ← ADD THIS
 
 function StatCard({ icon, label, value, sub, color = 'text-white', accent = false }) {
   return (
@@ -62,6 +63,8 @@ export default function Report() {
   const { session, updateSession, resetSession } = useSession();
   const [focusScore, setFocusScore] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [streakData, setStreakData] = useState(null);   // ← ADD THIS
+  const [newBadges, setNewBadges] = useState([]);        // ← ADD THIS
 
   useEffect(() => {
     if (!session.goal) {
@@ -72,6 +75,8 @@ export default function Report() {
   }, []);
 
   const finalizeSession = async () => {
+    let finalScore = null;                               // ← ADD THIS
+
     try {
       if (session.sessionId) {
         const data = await completeSession(session.sessionId, {
@@ -79,15 +84,30 @@ export default function Report() {
           quiz_score: session.quizScore || 0,
           quiz_total: session.quizTotal || 5,
         });
-        setFocusScore(data.session?.focus_score ?? calculateLocalScore());
+        finalScore = data.session?.focus_score ?? calculateLocalScore(); // ← CHANGE THIS
+        setFocusScore(finalScore);                       // ← CHANGE THIS
       } else {
-        setFocusScore(calculateLocalScore());
+        finalScore = calculateLocalScore();              // ← CHANGE THIS
+        setFocusScore(finalScore);                       // ← CHANGE THIS
       }
     } catch (err) {
-      setFocusScore(calculateLocalScore());
+      finalScore = calculateLocalScore();                // ← CHANGE THIS
+      setFocusScore(finalScore);                         // ← CHANGE THIS
     }
+
     setLoaded(true);
-    updateSession({ focusScore: focusScore });
+    updateSession({ focusScore: finalScore });           // ← CHANGE THIS (was focusScore which was still null)
+
+    // ↓ ADD THIS ENTIRE BLOCK
+    const { stats, newBadges: earned } = saveSession({
+      goal: session.goal,
+      focusScore: finalScore,
+      focusTimeSpent: session.focusTimeSpent,
+      quizScore: session.quizScore,
+    });
+    setStreakData(stats);
+    setNewBadges(earned);
+    // ↑ ADD THIS ENTIRE BLOCK
   };
 
   const calculateLocalScore = () => {
@@ -112,7 +132,8 @@ export default function Report() {
   return (
     <div className="min-h-screen bg-dark-900 py-8 px-4">
       <div className="max-w-2xl mx-auto animate-fade-in">
-        {/* Header */}
+
+        {/* Header — NO CHANGE */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-full px-4 py-1.5 mb-4">
             <span className="text-green-400 text-sm">✓</span>
@@ -122,14 +143,14 @@ export default function Report() {
           <p className="text-gray-400 text-sm">Here's how your session went</p>
         </div>
 
-        {/* Focus score ring */}
+        {/* Score ring — NO CHANGE */}
         {loaded && (
           <div className="flex justify-center mb-8 animate-slide-up">
             <ScoreRing score={displayScore} />
           </div>
         )}
 
-        {/* Goal banner */}
+        {/* Goal banner — NO CHANGE */}
         <div className="bg-dark-800 border border-dark-500 rounded-xl px-5 py-4 mb-6 flex items-start gap-3">
           <span className="text-2xl shrink-0">🎯</span>
           <div>
@@ -141,7 +162,7 @@ export default function Report() {
           </div>
         </div>
 
-        {/* Stats grid */}
+        {/* Stats grid — NO CHANGE */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           <StatCard
             icon="⏱️"
@@ -174,7 +195,7 @@ export default function Report() {
           />
         </div>
 
-        {/* Quiz breakdown */}
+        {/* Quiz breakdown — NO CHANGE */}
         {session.quizResults && (
           <div className="bg-dark-800 border border-dark-500 rounded-xl p-5 mb-6">
             <h3 className="text-sm font-medium text-gray-300 mb-4">Quiz Breakdown</h3>
@@ -200,7 +221,7 @@ export default function Report() {
           </div>
         )}
 
-        {/* Achievements */}
+        {/* Achievements — NO CHANGE */}
         <div className="bg-dark-800 border border-dark-500 rounded-xl p-5 mb-6">
           <h3 className="text-sm font-medium text-gray-300 mb-3">Achievements</h3>
           <div className="flex flex-wrap gap-2">
@@ -232,7 +253,65 @@ export default function Report() {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* ↓ ADD THIS ENTIRE BLOCK - Streak and Progress */}
+        {streakData && (
+          <div className="bg-dark-800 border border-dark-500 rounded-xl p-5 mb-6">
+            <h3 className="text-sm font-medium text-gray-300 mb-4">Your Progress</h3>
+
+            {/* Streak + Stats row */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-400 timer-display">
+                  🔥 {streakData.currentStreak}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Day Streak</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-400 timer-display">
+                  {streakData.totalSessions}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Total Sessions</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-400 timer-display">
+                  {Math.floor(streakData.totalFocusTime / 60)}m
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Total Focus Time</div>
+              </div>
+            </div>
+
+            {/* New badges earned this session */}
+            {newBadges.length > 0 && (
+              <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3 mb-3">
+                <p className="text-yellow-400 text-xs font-medium mb-2">
+                  🎉 New badges earned!
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {newBadges.map(badge => (
+                    <span key={badge} className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs px-3 py-1 rounded-full">
+                      {badge === '3_day_streak' && '🔥 3 Day Streak'}
+                      {badge === '7_day_streak' && '⚡ 7 Day Streak'}
+                      {badge === '5_sessions' && '📚 5 Sessions Done'}
+                      {badge === 'focus_master' && '🎯 Focus Master'}
+                      {badge === 'one_hour_total' && '⏰ One Hour Club'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Best score */}
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-500">Best Focus Score Ever</span>
+              <span className="text-green-400 font-bold timer-display">
+                {streakData.bestFocusScore}%
+              </span>
+            </div>
+          </div>
+        )}
+        {/* ↑ ADD THIS ENTIRE BLOCK */}
+
+        {/* Actions — NO CHANGE */}
         <div className="flex gap-3">
           <button
             onClick={handleStudyAgain}
@@ -247,6 +326,7 @@ export default function Report() {
             Watch Another
           </button>
         </div>
+
       </div>
     </div>
   );
