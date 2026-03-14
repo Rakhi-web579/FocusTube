@@ -94,7 +94,7 @@ const [breakType, setBreakType] = useState('');
               setVideoProgress(100);
               handleVideoEnd();
             }
-            if (event.data === 2) {       // paused
+          if (event.data === 2) {       // paused
               setIsRunning(false);
               pauseCountRef.current += 1;
               setPauseCount(pauseCountRef.current);
@@ -111,7 +111,7 @@ const [breakType, setBreakType] = useState('');
                 if (lastTimeRef.current > 8 && currentTime < lastTimeRef.current - 8) {
                   rewindCountRef.current += 1;
                   setRewindCount(rewindCountRef.current);
-                  if (rewindCountRef.current >= 3) {
+                 if (rewindCountRef.current >= 3) {
                     setDifficultyType('rewind');
                     setShowDifficultyAlert(true);
                     rewindCountRef.current = 0;
@@ -275,6 +275,7 @@ useEffect(() => {
     }, 1000);
     return () => clearInterval(breakTimer);
   }, [showBreakScreen]);
+  
   const handleVideoEnd = () => {
     clearInterval(timerRef.current);
     setIsRunning(false);
@@ -505,10 +506,10 @@ useEffect(() => {
                 </button>
               </div>
 
-              <div className="bg-dark-700 border border-dark-500 rounded-xl p-3">
+    <div className="bg-dark-700 border border-dark-500 rounded-xl p-3">
                 <div className="text-xl mb-1">📝</div>
-                <p className="text-white text-xs font-medium mb-1">Quick Notes</p>
-                <p className="text-gray-500 text-xs">Write down what's confusing to revisit later</p>
+                <p className="text-white text-xs font-medium mb-1">Wikipedia</p>
+                <p className="text-gray-500 text-xs">Read a quick overview of this topic</p>
                 <button
                   onClick={() => {
                     intentionalTabRef.current = true;
@@ -520,6 +521,24 @@ useEffect(() => {
                   Open Wikipedia →
                 </button>
               </div>
+            <div className="bg-dark-700 border border-dark-500 rounded-xl p-3 col-span-2">
+                <div className="text-xl mb-1">🧒</div>
+                <p className="text-white text-xs font-medium mb-1">Explain Like I'm 12</p>
+                <p className="text-gray-500 text-xs">Get a super simple explanation of this topic</p>
+                <button
+                  onClick={() => {
+                    intentionalTabRef.current = true;
+                    const prompt = encodeURIComponent(
+                      `Explain "${session.goal}" like I'm 12 years old. Use simple words, a fun analogy, and keep it under 100 words.`
+                    ); 
+                    window.open(`https://chatgpt.com/?q=${prompt}`, '_blank');
+                  }}
+                  className="mt-2 text-xs bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-blue-400 px-2 py-1 rounded-lg transition-all w-full"
+                >
+                  Ask AI →
+                </button>
+              </div>
+
             </div>
 
             {/* Footer */}

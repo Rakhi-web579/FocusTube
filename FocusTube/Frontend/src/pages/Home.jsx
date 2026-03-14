@@ -121,7 +121,7 @@ const [mode, setMode] = useState('custom'); // 'custom' or 'pomodoro'
                   : 'bg-dark-700 border-dark-400 text-gray-400'
               }`}
             >
-              Custom Timer
+               ⏱️ Custom Timer
             </button>
             <button
               onClick={() => setMode('pomodoro')}
