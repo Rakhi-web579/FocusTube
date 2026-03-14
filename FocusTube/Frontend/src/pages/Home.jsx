@@ -24,14 +24,20 @@ export default function Home() {
   const [customInput, setCustomInput] = useState('');
   const [error, setError] = useState('');
   const [exampleIndex, setExampleIndex] = useState(0);
-
+const [mode, setMode] = useState('custom'); // 'custom' or 'pomodoro'
   const handleStart = () => {
     if (!goal.trim()) {
       setError('Please enter a study goal to begin');
       return;
     }
     setError('');
-    updateSession({ goal: goal.trim(), focusDuration: duration });
+   updateSession({
+      goal: goal.trim(),
+      focusDuration: mode === 'pomodoro' ? 25 : duration,// default to 25 min for pomodoro mode
+      pomodoroMode: mode === 'pomodoro',
+      pomodoroSession: 1,
+      pomodoroPhase: 'focus',
+    });
     navigate('/search');
   };
 
@@ -105,63 +111,109 @@ export default function Home() {
               ))}
             </div>
           </div>
-{/* Duration selector */}
-          <div className="mb-8">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              Focus session duration
-            </label>
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              {DURATION_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => { setDuration(opt.value); setCustomInput(''); }}
-                  className={`py-3 px-4 rounded-xl border text-center transition-all ${
-                    duration === opt.value && !customInput
-                      ? 'bg-green-500/10 border-green-500 text-green-400'
-                      : 'bg-dark-700 border-dark-400 text-gray-400 hover:border-dark-300'
-                  }`}
-                >
-                  <div className="text-lg font-bold timer-display">{opt.label}</div>
-                  <div className="text-xs opacity-60 mt-0.5">{opt.desc}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Custom duration input */}
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="1"
-                max="300"
-                placeholder="Or type custom minutes (1–300)..."
-                value={customInput}
-                onChange={(e) => {
-                  setCustomInput(e.target.value);
-                  const val = parseInt(e.target.value);
-                  if (val >= 1 && val <= 300) setDuration(val);
-                }}
-                className={`flex-1 bg-dark-700 border rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none transition-colors ${
-                  customInput ? 'border-green-500' : 'border-dark-400 focus:border-green-500'
-                }`}
-              />
-              {customInput && (
-                <button
-                  onClick={() => { setCustomInput(''); setDuration(25); }}
-                  className="text-xs px-3 py-2.5 rounded-xl border border-dark-400 text-gray-500 hover:text-gray-300 transition-all"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {customInput && parseInt(customInput) >= 1 && parseInt(customInput) <= 300 && (
-              <p className="text-green-400 text-xs mt-1.5">✓ {customInput} minutes selected</p>
-            )}
-            {customInput && (isNaN(parseInt(customInput)) || parseInt(customInput) < 1 || parseInt(customInput) > 300) && (
-              <p className="text-red-400 text-xs mt-1.5">⚠ Enter a value between 1 and 300 minutes</p>
-            )}
+{/* Mode Toggle */}
+          <div className="flex gap-2 mb-6">
+            <button
+              onClick={() => setMode('custom')}
+              className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${
+                mode === 'custom'
+                  ? 'bg-green-500/10 border-green-500 text-green-400'
+                  : 'bg-dark-700 border-dark-400 text-gray-400'
+              }`}
+            >
+              Custom Timer
+            </button>
+            <button
+              onClick={() => setMode('pomodoro')}
+              className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${
+                mode === 'pomodoro'
+                  ? 'bg-red-500/10 border-red-500 text-red-400'
+                  : 'bg-dark-700 border-dark-400 text-gray-400'
+              }`}
+            >
+              🍅 Pomodoro
+            </button>
           </div>
 
+          {/* Pomodoro info */}
+          {mode === 'pomodoro' && (
+            <div className="mb-8 bg-dark-700 border border-dark-500 rounded-xl p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-3 text-center">Session Structure</p>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-red-400 font-bold text-lg">25 min</p>
+                  <p className="text-gray-500 text-xs">Focus</p>
+                </div>
+                <div>
+                  <p className="text-blue-400 font-bold text-lg">5 min</p>
+                  <p className="text-gray-500 text-xs">Short Break</p>
+                </div>
+                <div>
+                  <p className="text-purple-400 font-bold text-lg">15 min</p>
+                  <p className="text-gray-500 text-xs">Long Break (×4)</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Duration selector — only in custom mode */}
+          {mode === 'custom' && (
+            <div className="mb-8">
+              <label className="block text-sm font-medium text-gray-300 mb-3">
+                Focus session duration
+              </label>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                {DURATION_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setDuration(opt.value); setCustomInput(''); }}
+                    className={`py-3 px-4 rounded-xl border text-center transition-all ${
+                      duration === opt.value && !customInput
+                        ? 'bg-green-500/10 border-green-500 text-green-400'
+                        : 'bg-dark-700 border-dark-400 text-gray-400 hover:border-dark-300'
+                    }`}
+                  >
+                    <div className="text-lg font-bold timer-display">{opt.label}</div>
+                    <div className="text-xs opacity-60 mt-0.5">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom duration input */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="300"
+                  placeholder="Or type custom minutes (1–300)..."
+                  value={customInput}
+                  onChange={(e) => {
+                    setCustomInput(e.target.value);
+                    const val = parseInt(e.target.value);
+                    if (val >= 1 && val <= 300) setDuration(val);
+                  }}
+                  className={`flex-1 bg-dark-700 border rounded-xl px-4 py-2.5 text-white placeholder-gray-600 text-sm focus:outline-none transition-colors ${
+                    customInput ? 'border-green-500' : 'border-dark-400 focus:border-green-500'
+                  }`}
+                />
+                {customInput && (
+                  <button
+                    onClick={() => { setCustomInput(''); setDuration(25); }}
+                    className="text-xs px-3 py-2.5 rounded-xl border border-dark-400 text-gray-500 hover:text-gray-300 transition-all"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {customInput && parseInt(customInput) >= 1 && parseInt(customInput) <= 300 && (
+                <p className="text-green-400 text-xs mt-1.5">✓ {customInput} minutes selected</p>
+              )}
+              {customInput && (isNaN(parseInt(customInput)) || parseInt(customInput) < 1 || parseInt(customInput) > 300) && (
+                <p className="text-red-400 text-xs mt-1.5">⚠ Enter a value between 1 and 300 minutes</p>
+              )}
+            </div>
+          )}
           {/* CTA Button */}
           <button
             onClick={handleStart}

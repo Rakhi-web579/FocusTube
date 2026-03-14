@@ -352,8 +352,8 @@ const SUBJECT_MAP = {
   ],
 
   // ── Language & Communication ───────────────────────────────────────
-  english: [
-    'grammar', 'vocabulary', 'writing', 'essay', 'reading',
+english: [
+  'english', 'language', 'grammar', 'vocabulary', 'writing', 'essay', 'reading',
     'comprehension', 'literature', 'poetry', 'prose', 'tense',
     'verb', 'noun', 'adjective', 'adverb', 'preposition',
     'punctuation', 'paragraph', 'thesis', 'argument', 'rhetoric',

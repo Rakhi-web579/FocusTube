@@ -21,14 +21,21 @@ export default function Player() {
   const [rewindCount, setRewindCount] = useState(0);
   const [showDifficultyAlert, setShowDifficultyAlert] = useState(false);
   const [difficultyType, setDifficultyType] = useState('');
+const [show202020, setShow202020] = useState(false);
+const [eyeCountdown, setEyeCountdown] = useState(20);
+const [showBreakScreen, setShowBreakScreen] = useState(false);
+const [breakTimeLeft, setBreakTimeLeft] = useState(0);
+const [breakType, setBreakType] = useState('');
   const timerRef = useRef(null);
   const sessionIdRef = useRef(null);
   const playerRef = useRef(null);
-const progressRef = useRef(null);
+  const progressRef = useRef(null);
   const lastTimeRef = useRef(0);
   const rewindCountRef = useRef(0);
   const pauseCountRef = useRef(0);
   const sessionStartedRef = useRef(false);
+  const intentionalTabRef = useRef(false);
+  const distractionCooldownRef = useRef(false);
 
   // Start backend session
   useEffect(() => {
@@ -45,7 +52,6 @@ const progressRef = useRef(null);
         updateSession({ sessionId: data.session_id });
       } catch (err) {
         console.error('Session start failed:', err);
-        // Continue offline
         sessionIdRef.current = `local-${Date.now()}`;
       }
     };
@@ -65,7 +71,7 @@ const progressRef = useRef(null);
     window.onYouTubeIframeAPIReady = () => {
       playerRef.current = new window.YT.Player('yt-player', {
         videoId,
-       playerVars: {
+        playerVars: {
           autoplay: 1,
           modestbranding: 1,
           rel: 0,
@@ -77,7 +83,7 @@ const progressRef = useRef(null);
           controls: 1,
         },
         events: {
-    onReady: () => {
+          onReady: () => {
             setPlayerReady(true);
             setIsRunning(true);
             setSessionStarted(true);
@@ -98,11 +104,10 @@ const progressRef = useRef(null);
                 pauseCountRef.current = 0;
               }
             }
-         if (event.data === 1) {       // playing
+            if (event.data === 1) {       // playing
               setIsRunning(true);
               try {
                 const currentTime = playerRef.current?.getCurrentTime() || 0;
-                // only flag as rewind if jumped back more than 8 seconds
                 if (lastTimeRef.current > 8 && currentTime < lastTimeRef.current - 8) {
                   rewindCountRef.current += 1;
                   setRewindCount(rewindCountRef.current);
@@ -121,7 +126,6 @@ const progressRef = useRef(null);
       });
     };
 
-    // If API already loaded
     if (window.YT && window.YT.Player) {
       window.onYouTubeIframeAPIReady();
     }
@@ -135,7 +139,7 @@ const progressRef = useRef(null);
 
   // Track video progress
   useEffect(() => {
-  const trackProgress = () => {
+    const trackProgress = () => {
       if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
         try {
           const current = playerRef.current.getCurrentTime();
@@ -155,10 +159,22 @@ const progressRef = useRef(null);
 
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 1) {
+      if (prev <= 1) {
           clearInterval(timerRef.current);
           setIsRunning(false);
-          setShowEndDialog(true);
+          if (session.pomodoroMode) {
+            playerRef.current?.pauseVideo();
+            const isLongBreak = session.pomodoroSession % 4 === 0;
+            setBreakType(isLongBreak ? 'long' : 'short');
+            setBreakTimeLeft(isLongBreak ?15 * 60 : 4 * 60 + 40);
+            setShow202020(true);
+            setTimeout(() => {
+              setShow202020(false);
+              setShowBreakScreen(true);
+            }, 22000);
+          } else {
+            setShowEndDialog(true);
+          }
           return 0;
         }
         return prev - 1;
@@ -169,43 +185,96 @@ const progressRef = useRef(null);
     return () => clearInterval(timerRef.current);
   }, [isRunning]);
 
-// Tab visibility + fullscreen detection
+  // Tab visibility + fullscreen detection
   useEffect(() => {
+    const countDistraction = () => {
+      // Debounce — visibilitychange and focus poll can fire close together
+      // ensures only one distraction recorded per tab switch
+      if (distractionCooldownRef.current) return;
+      distractionCooldownRef.current = true;
+      setTimeout(() => { distractionCooldownRef.current = false; }, 1000);
+
+      setDistractions(prev => {
+        const newCount = prev + 1;
+        if (sessionIdRef.current) recordDistraction(sessionIdRef.current);
+        updateSession({ distractions: newCount });
+        return newCount;
+      });
+      setShowDistractAlert(true);
+      setTimeout(() => setShowDistractAlert(false), 4000);
+    };
+
     const handleVisibilityChange = () => {
       if (document.hidden && sessionStartedRef.current) {
-        setDistractions(prev => {
-          const newCount = prev + 1;
-          if (sessionIdRef.current) recordDistraction(sessionIdRef.current);
-          updateSession({ distractions: newCount });
-          return newCount;
-        });
-        setShowDistractAlert(true);
-        setTimeout(() => setShowDistractAlert(false), 4000);
+        if (intentionalTabRef.current) return;
+        countDistraction();
+      } else if (!document.hidden) {
+        // User returned to tab — reset intentional flag
+        intentionalTabRef.current = false;
       }
     };
 
-    // catches tab switch when video is fullscreen
-    const handleWindowBlur = () => {
-      if (sessionStartedRef.current && document.fullscreenElement) {
-        setDistractions(prev => {
-          const newCount = prev + 1;
-          if (sessionIdRef.current) recordDistraction(sessionIdRef.current);
-          updateSession({ distractions: newCount });
-          return newCount;
-        });
-        setShowDistractAlert(true);
-        setTimeout(() => setShowDistractAlert(false), 4000);
+    // Poll document.hasFocus() every second
+    // This is the only reliable way to detect focus loss during YouTube iframe fullscreen
+    // because the iframe owns the fullscreen context, not your page —
+    // so window blur and document.fullscreenElement both don't work
+    let wasFocused = true;
+    const focusPollInterval = setInterval(() => {
+      const isFocused = document.hasFocus();
+      if (wasFocused && !isFocused && sessionStartedRef.current) {
+        if (!intentionalTabRef.current) {
+          countDistraction();
+        }
       }
-    };
+      if (isFocused && !wasFocused) {
+        // User came back — reset intentional flag
+        intentionalTabRef.current = false;
+      }
+      wasFocused = isFocused;
+    }, 1000);
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleWindowBlur);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleWindowBlur);
+      clearInterval(focusPollInterval);
     };
-  }, []);
-
+  }, []);// 20-20-20 eye rule
+useEffect(() => {
+  if (!show202020) return;
+  setEyeCountdown(20);
+  const interval = setInterval(() => {
+    setEyeCountdown(prev => {
+      if (prev <= 1) {
+        clearInterval(interval);
+        setShow202020(false);
+        return 20;
+      }
+      return prev - 1;
+    });
+  }, 1000);
+  return () => clearInterval(interval);
+}, [show202020]);
+// Break countdown
+  useEffect(() => {
+    if (!showBreakScreen || breakTimeLeft <= 0) return;
+    const breakTimer = setInterval(() => {
+      setBreakTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(breakTimer);
+          setShowBreakScreen(false);
+          const nextSession = (session.pomodoroSession || 1) + 1;
+          updateSession({ pomodoroSession: nextSession });
+          setTimeLeft(25 * 60); // change to 25 * 60 after testing
+          setIsRunning(true);
+          playerRef.current?.playVideo();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(breakTimer);
+  }, [showBreakScreen]);
   const handleVideoEnd = () => {
     clearInterval(timerRef.current);
     setIsRunning(false);
@@ -227,7 +296,6 @@ const progressRef = useRef(null);
   const progress = ((totalSeconds - timeLeft) / totalSeconds) * 100;
   const isWarning = timeLeft <= 300 && timeLeft > 60;
   const isCritical = timeLeft <= 60;
-
   const timerClass = isCritical ? 'timer-critical' : isWarning ? 'timer-warning' : 'text-green-400';
 
   return (
@@ -285,7 +353,7 @@ const progressRef = useRef(null);
         {/* Video player */}
         <div className="flex-1 flex flex-col">
           <div className="relative bg-black rounded-xl overflow-hidden" style={{ aspectRatio: '16/9' }}>
-        {!playerReady && (
+            {!playerReady && (
               <div className="absolute inset-0 flex items-center justify-center bg-dark-800">
                 <div className="text-center">
                   <svg className="w-8 h-8 animate-spin text-green-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
@@ -421,13 +489,13 @@ const progressRef = useRef(null);
 
             {/* Quick help options */}
             <div className="grid grid-cols-2 gap-3 mb-5">
-
               <div className="bg-dark-700 border border-dark-500 rounded-xl p-3">
                 <div className="text-xl mb-1">🗺️</div>
                 <p className="text-white text-xs font-medium mb-1">Visual Flowchart</p>
                 <p className="text-gray-500 text-xs">Break the concept into a step-by-step diagram</p>
                 <button
-               onClick={() => {
+                  onClick={() => {
+                    intentionalTabRef.current = true;
                     const query = encodeURIComponent(`${session.goal} flowchart diagram`);
                     window.open(`https://www.google.com/search?q=${query}&tbm=isch`, '_blank');
                   }}
@@ -442,7 +510,8 @@ const progressRef = useRef(null);
                 <p className="text-white text-xs font-medium mb-1">Quick Notes</p>
                 <p className="text-gray-500 text-xs">Write down what's confusing to revisit later</p>
                 <button
-                onClick={() => {
+                  onClick={() => {
+                    intentionalTabRef.current = true;
                     const query = encodeURIComponent(`${session.goal}`);
                     window.open(`https://en.wikipedia.org/w/index.php?search=${query}`, '_blank');
                   }}
@@ -476,6 +545,154 @@ const progressRef = useRef(null);
           </div>
         </div>
       )}
+      {/* 20-20-20 Eye Rule */}
+      {show202020 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{
+            background: 'radial-gradient(ellipse at center, #0a1628 0%, #050d1a 60%, #000810 100%)'
+          }}
+        >
+          {/* Animated stars background */}
+          <div className="absolute inset-0 overflow-hidden">
+            {[...Array(20)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-full bg-white animate-pulse"
+                style={{
+                  width: Math.random() * 3 + 1 + 'px',
+                  height: Math.random() * 3 + 1 + 'px',
+                  top: Math.random() * 100 + '%',
+                  left: Math.random() * 100 + '%',
+                  opacity: Math.random() * 0.5 + 0.1,
+                  animationDelay: Math.random() * 3 + 's',
+                  animationDuration: Math.random() * 3 + 2 + 's',
+                }}
+              />
+            ))}
+          </div>
+
+          <div className="relative z-10 flex flex-col items-center text-center px-8 max-w-md">
+
+            {/* Eye icon */}
+            <div className="text-7xl mb-6 animate-pulse">👁️</div>
+
+            {/* Title */}
+            <h2 className="text-white font-bold text-2xl mb-2">
+              20 — 20 — 20 Rule
+            </h2>
+            <p className="text-blue-300 text-sm mb-8 leading-relaxed">
+              Look at something <span className="text-white font-semibold">20 feet away</span> for the next
+              <span className="text-white font-semibold"> 20 seconds</span> to rest your eyes.
+            </p>
+
+            {/* Countdown ring */}
+            <div className="relative w-32 h-32 mb-8">
+              <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="#0f2040" strokeWidth="8" />
+                <circle
+                  cx="60" cy="60" r="50"
+                  fill="none"
+                  stroke="#60a5fa"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 50}`}
+                  strokeDashoffset={`${2 * Math.PI * 50 * (1 - eyeCountdown / 20)}`}
+                  style={{ transition: 'stroke-dashoffset 1s linear' }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-3xl font-bold text-blue-400 timer-display">{eyeCountdown}</span>
+                <span className="text-xs text-blue-300/60">seconds</span>
+              </div>
+            </div>
+
+            {/* Breathing tip */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 mb-6 w-full">
+              <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">While you wait</p>
+              <p className="text-gray-200 text-sm">
+                🌬️ Take a slow deep breath &nbsp;•&nbsp; 🧘 Relax your shoulders &nbsp;•&nbsp; 💧 Drink some water
+              </p>
+            </div>
+
+            {/* Skip */}
+            <button
+              onClick={() => {
+                setShow202020(false);
+                setShowBreakScreen(true);
+              }}
+              className="text-gray-600 text-xs hover:text-gray-400 transition-colors"
+            >
+              Skip →
+            </button>
+
+          </div>
+        </div>
+      )}
+      {/* Break screen */}
+      {showBreakScreen && (
+        <div className="fixed inset-0 bg-dark-900 flex flex-col items-center justify-center z-50">
+          <div className="text-center mb-8">
+            <div className="text-5xl mb-3">{breakType === 'long' ? '🎉' : '☕'}</div>
+            <h2 className="text-white font-bold text-2xl mb-1">
+              {breakType === 'long' ? 'Long Break!' : 'Short Break'}
+            </h2>
+            <p className="text-gray-400 text-sm">
+              {breakType === 'long'
+                ? 'Great work completing 4 sessions! Take 15 minutes.'
+                : 'Good focus session! Rest for 5 minutes.'}
+            </p>
+          </div>
+
+          <div className="text-5xl font-bold text-blue-400 timer-display mb-8">
+            {formatTime(breakTimeLeft)}
+          </div>
+
+          <div className="bg-dark-800 border border-dark-500 rounded-2xl p-6 max-w-sm w-full mx-4 mb-6 text-center">
+            <p className="text-gray-400 text-xs uppercase tracking-wider mb-3">Breathing Exercise</p>
+            <p className="text-white text-sm">Inhale for 4 seconds, hold for 4, exhale for 4</p>
+            <div className="mt-4 w-16 h-16 rounded-full border-2 border-blue-400 mx-auto flex items-center justify-center animate-pulse">
+              <span className="text-blue-400 text-xs">breathe</span>
+            </div>
+          </div>
+
+          <div className="bg-dark-800 border border-dark-500 rounded-xl p-4 max-w-sm w-full mx-4 mb-8">
+            <p className="text-gray-400 text-xs uppercase tracking-wider mb-2">Stretch Reminder</p>
+            <p className="text-gray-300 text-sm">
+              🧘 Roll your shoulders • 👀 Look away from screen • 🚶 Stand up and walk
+            </p>
+          </div>
+
+          <div className="flex gap-2 mb-8">
+            {[1, 2, 3, 4].map(i => (
+              <div
+                key={i}
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                  i <= (session.pomodoroSession || 1)
+                    ? 'bg-red-500 text-white'
+                    : 'bg-dark-600 text-gray-600'
+                }`}
+              >
+                🍅
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => {
+              setShowBreakScreen(false);
+              const nextSession = (session.pomodoroSession || 1) + 1;
+              updateSession({ pomodoroSession: nextSession });
+              setTimeLeft(25 * 60); // change to 25 * 60 after testing
+              setIsRunning(true);
+              playerRef.current?.playVideo();
+            }}
+            className="text-gray-500 text-sm hover:text-gray-300 transition-colors"
+          >
+            Skip break →
+          </button>
+        </div>
+      )}
+
       {/* Distraction alert */}
       {showDistractAlert && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
