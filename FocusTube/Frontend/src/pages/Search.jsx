@@ -278,7 +278,7 @@ const SUBJECT_MAP = {
     'gravity', 'nuclear', 'particle', 'circuit', 'field', 'magnetic',
     'velocity', 'acceleration', 'momentum', 'torque', 'friction',
     'newton', 'einstein', 'schrodinger', 'heisenberg', 'entropy',
-    'pressure', 'temperature', 'ideal gas', 'fluid', 'dynamics'
+    'pressure', 'temperature', 'ideal gas', 'fluid', 'dynamics', 'photon','photoelectric effect'
   ],
 
   chemistry: [
@@ -422,18 +422,30 @@ function subjectMapScore(query, goal) {
   const queryLower = query.toLowerCase();
   const goalLower = goal.toLowerCase();
 
+  // Step 1 — find which subject the goal belongs to
+  let goalSubject = null;
+  let goalSubjectTerms = null;
+
   for (const [subject, relatedTerms] of Object.entries(SUBJECT_MAP)) {
-    const goalMentionsSubject =
+    const goalMatches =
       goalLower.includes(subject) ||
       relatedTerms.some(term => goalLower.includes(term));
-
-    const queryMentionsTerm =
-      queryLower.includes(subject) ||
-      relatedTerms.some(term => queryLower.includes(term));
-
-    if (goalMentionsSubject && queryMentionsTerm) return true;
+    if (goalMatches) {
+      goalSubject = subject;
+      goalSubjectTerms = relatedTerms;
+      break;
+    }
   }
-  return false;
+
+  // Step 2 — if goal has no recognized subject, allow everything
+  if (!goalSubject) return true;
+
+  // Step 3 — query must match the SAME subject as the goal
+  const queryMatchesGoalSubject =
+    queryLower.includes(goalSubject) ||
+    goalSubjectTerms.some(term => queryLower.includes(term));
+
+  return queryMatchesGoalSubject;
 }
 
 function isRelatedToGoal(query, goal) {

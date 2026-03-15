@@ -142,7 +142,7 @@ function buildEducationalQuery(userQuery) {
   const subjects = {
     cs:      ['code', 'programming', 'algorithm', 'javascript', 'python', 'react', 'binary', 'linked list', 'sorting', 'tree', 'graph'],
     math:    ['calculus', 'algebra', 'geometry', 'trigonometry', 'statistics', 'probability', 'matrix', 'integral', 'derivative'],
-    science: ['physics', 'chemistry', 'biology', 'photosynthesis', 'thermodynamics', 'genetics', 'quantum', 'evolution'],
+    science: ['physics', 'chemistry', 'biology', 'thermodynamics', 'genetics', 'quantum', 'evolution'],
     history: ['history', 'war', 'revolution', 'empire', 'civilization', 'ancient', 'medieval', 'colonialism'],
     language:['grammar', 'vocabulary', 'english', 'spanish', 'french', 'hindi', 'writing', 'essay'],
   };
