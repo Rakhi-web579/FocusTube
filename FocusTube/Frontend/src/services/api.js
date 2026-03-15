@@ -7,10 +7,14 @@ const api = axios.create({
   timeout: 60000,
 });
 
-// Search educational YouTube videos
+// Search educational YouTube videos changed for rabbit hole
 export const searchVideos = async (query, goal = '') => {
+  if (!localStorage.getItem('session_id')) {
+    localStorage.setItem('session_id', crypto.randomUUID());
+  }
+  const session_id = localStorage.getItem('session_id');
   const response = await api.get('/search', {
-    params: { q: query, goal }
+    params: { q: query, goal, session_id }
   });
   return response.data;
 };
