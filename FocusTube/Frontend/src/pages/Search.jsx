@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useSession } from '../context/SessionContext';
 import { searchVideos } from '../services/api';
 
-// Entertainment keywords for rabbit-hole detection
 const ENTERTAINMENT_KEYWORDS = [
   'prank', 'meme', 'funny', 'song', 'music', 'vlog', 'reaction',
   'challenge', 'compilation', 'fail', 'viral', 'gaming', 'unboxing',
@@ -520,6 +519,7 @@ export default function Search() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchAlert, setSearchAlert] = useState(null);
   const [showRabbitHoleWarning, setShowRabbitHoleWarning] = useState(false);
   const [pendingSearch, setPendingSearch] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
@@ -538,11 +538,13 @@ export default function Search() {
     if (!searchQuery.trim()) return;
     setLoading(true);
     setError('');
+    setSearchAlert(null);
     setHasSearched(true);
 
     try {
       const data = await searchVideos(searchQuery, session.goal);
       setResults(data.results || []);
+      setSearchAlert(data.alert || null);
       if (data.note) setApiNote(data.note);
     } catch (err) {
       setError('Failed to search. Make sure the backend is running and your YouTube API key is configured.');
@@ -555,7 +557,7 @@ export default function Search() {
   const handleSearch = () => {
     if (!query.trim()) return;
 
-    if (session.goal && !isRelatedToGoal(query, session.goal)) {
+    if (session.goal && !isRelatedToGoal(query)) {
       setPendingSearch(query);
       setShowRabbitHoleWarning(true);
       return;
@@ -643,6 +645,27 @@ export default function Search() {
           </div>
         )}
 
+        {/* Gemini alert banner */}
+        {searchAlert && (
+          <div className={`flex flex-col gap-1 border rounded-xl px-4 py-3 mb-6 ${
+            searchAlert.type === 'rabbit_hole' ? 'bg-yellow-500/5 border-yellow-500/20' :
+            searchAlert.type === 'entertainment' ? 'bg-red-500/5 border-red-500/20' :
+            'bg-blue-500/5 border-blue-500/20'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-white">{searchAlert.title}</span>
+              <button
+                onClick={() => setSearchAlert(null)}
+                className="text-gray-600 hover:text-gray-400 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">{searchAlert.message}</p>
+            <p className="text-xs text-gray-600 italic">{searchAlert.reason}</p>
+          </div>
+        )}
+
         {/* API note banner */}
         {apiNote && (
           <div className="flex items-center gap-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-3 mb-6">
@@ -713,7 +736,7 @@ export default function Search() {
 
       </main>
 
-      {/* Rabbit hole warning modal */}
+      {/* Frontend rabbit hole warning modal (entertainment keywords only) */}
       {showRabbitHoleWarning && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-dark-800 border border-yellow-500/40 rounded-2xl p-6 max-w-sm w-full animate-slide-up">
