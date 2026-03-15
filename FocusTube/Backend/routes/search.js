@@ -190,12 +190,32 @@ function isEducational(video) {
   return true;
 }
 
-function parseDuration(isoDuration) {
-  if (!isoDuration) return 0;
-  const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!match) return 0;
-  return parseInt(match[1] || 0) * 3600 + parseInt(match[2] || 0) * 60 + parseInt(match[3] || 0);
-}
+// Build an enhanced educational search query
+function buildEducationalQuery(userQuery) {
+  const cleanQuery = userQuery.trim().toLowerCase();
+
+  const subjects = {
+    cs:      ['code', 'programming', 'algorithm', 'javascript', 'python', 'react', 'binary', 'linked list', 'sorting', 'tree', 'graph'],
+    math:    ['calculus', 'algebra', 'geometry', 'trigonometry', 'statistics', 'probability', 'matrix', 'integral', 'derivative'],
+    science: ['physics', 'chemistry', 'biology', 'thermodynamics', 'genetics', 'quantum', 'evolution'],
+    history: ['history', 'war', 'revolution', 'empire', 'civilization', 'ancient', 'medieval', 'colonialism'],
+    language:['grammar', 'vocabulary', 'english', 'spanish', 'french', 'hindi', 'writing', 'essay'],
+  };
+
+  const suffixes = {
+    cs:      'tutorial explained course',
+    math:    'lecture explained solution',
+    science: 'lecture explained documentary',
+    history: 'lecture documentary explained',
+    language:'lesson explained practice',
+    default: 'lecture explained tutorial',
+  };
+
+  for (const [subject, keywords] of Object.entries(subjects)) {
+    if (keywords.some(kw => cleanQuery.includes(kw))) {
+      return `${cleanQuery} ${suffixes[subject]}`;
+    }
+  }
 
 function formatDuration(seconds) {
   if (seconds === 0) return 'Unknown';

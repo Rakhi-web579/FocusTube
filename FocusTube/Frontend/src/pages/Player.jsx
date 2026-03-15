@@ -26,6 +26,9 @@ const [eyeCountdown, setEyeCountdown] = useState(20);
 const [showBreakScreen, setShowBreakScreen] = useState(false);
 const [breakTimeLeft, setBreakTimeLeft] = useState(0);
 const [breakType, setBreakType] = useState('');
+const [wikiSummary, setWikiSummary] = useState('');
+const [wikiLoading, setWikiLoading] = useState(false);
+const [wikiExpanded, setWikiExpanded] = useState(false);
   const timerRef = useRef(null);
   const sessionIdRef = useRef(null);
   const playerRef = useRef(null);
@@ -98,10 +101,11 @@ const [breakType, setBreakType] = useState('');
               setIsRunning(false);
               pauseCountRef.current += 1;
               setPauseCount(pauseCountRef.current);
-              if (pauseCountRef.current >= 4) {
+            if (pauseCountRef.current >= 4) {
                 setDifficultyType('pause');
                 setShowDifficultyAlert(true);
                 pauseCountRef.current = 0;
+                fetchWikiSummary();
               }
             }
             if (event.data === 1) {       // playing
@@ -111,11 +115,12 @@ const [breakType, setBreakType] = useState('');
                 if (lastTimeRef.current > 8 && currentTime < lastTimeRef.current - 8) {
                   rewindCountRef.current += 1;
                   setRewindCount(rewindCountRef.current);
-                 if (rewindCountRef.current >= 3) {
+               if (rewindCountRef.current >= 3) {
                     setDifficultyType('rewind');
                     setShowDifficultyAlert(true);
                     rewindCountRef.current = 0;
                     pauseCountRef.current = 0;
+                    fetchWikiSummary();
                   }
                 }
                 lastTimeRef.current = currentTime;
@@ -275,7 +280,72 @@ useEffect(() => {
     }, 1000);
     return () => clearInterval(breakTimer);
   }, [showBreakScreen]);
-  
+const fetchWikiSummary = async () => {
+    if (wikiSummary) return;
+    setWikiLoading(true);
+    try {
+      // Strip filler words to get core topic
+      const fillerWords = ['learn', 'understand', 'study', 'master', 'explore', 'introduction to', 'intro to', 'basics of', 'how to', 'what is', 'complete', 'full', 'course', 'tutorial'];
+      let cleanGoal = session.goal.toLowerCase();
+      fillerWords.forEach(word => {
+        cleanGoal = cleanGoal.replace(new RegExp(`\\b${word}\\b`, 'gi'), '');
+      });
+      cleanGoal = cleanGoal.trim().replace(/\s+/g, ' ');
+
+      const res = await fetch(
+        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanGoal)}`
+      );
+      const data = await res.json();
+      if (data.extract) {
+        setWikiSummary(data.extract);
+      } else {
+        setWikiSummary('No summary found. Try opening Wikipedia directly.');
+      }
+    } catch (e) {
+      setWikiSummary('Could not load summary. Check your connection.');
+    } finally {
+      setWikiLoading(false);
+    }
+  };
+ const fetchDiagrams = async () => {
+    if (diagrams.length > 0) return;
+    setDiagramsLoading(true);
+    try {
+      const fillerWords = ['learn', 'understand', 'study', 'master', 'explore', 'introduction to', 'intro to', 'basics of', 'how to', 'what is', 'complete', 'full', 'course', 'tutorial'];
+      let cleanGoal = session.goal.toLowerCase();
+      fillerWords.forEach(word => {
+        cleanGoal = cleanGoal.replace(new RegExp(`\\b${word}\\b`, 'gi'), '');
+      });
+      cleanGoal = cleanGoal.trim().replace(/\s+/g, ' ');
+
+      const res = await fetch(
+        `https://en.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(cleanGoal)}`
+      );
+      const data = await res.json();
+      const images = (data.items || [])
+        .filter(item =>
+          item.type === 'image' &&
+          (item.srcset || item.src) &&
+          !item.title?.toLowerCase().includes('icon') &&
+          !item.title?.toLowerCase().includes('logo') &&
+          !item.title?.toLowerCase().includes('flag') &&
+          !item.title?.toLowerCase().includes('edit')
+        )
+       .filter(item => item.src)
+        .slice(0, 3)
+        .map(item => ({
+          src: (item.srcset && item.srcset.length > 0)
+            ? 'https:' + item.srcset[item.srcset.length - 1].src
+            : (item.src ? 'https:' + item.src : null),
+          title: item.title || '',
+        }));
+      setDiagrams(images);
+    } catch (e) {
+      setDiagrams([]);
+    } finally {
+      setDiagramsLoading(false);
+    }
+  };
   const handleVideoEnd = () => {
     clearInterval(timerRef.current);
     setIsRunning(false);
@@ -490,7 +560,7 @@ useEffect(() => {
 
             {/* Quick help options */}
             <div className="grid grid-cols-2 gap-3 mb-5">
-              <div className="bg-dark-700 border border-dark-500 rounded-xl p-3">
+            <div className="bg-dark-700 border border-dark-500 rounded-xl p-3">
                 <div className="text-xl mb-1">🗺️</div>
                 <p className="text-white text-xs font-medium mb-1">Visual Flowchart</p>
                 <p className="text-gray-500 text-xs">Break the concept into a step-by-step diagram</p>
@@ -505,21 +575,75 @@ useEffect(() => {
                   Search Diagrams →
                 </button>
               </div>
-
     <div className="bg-dark-700 border border-dark-500 rounded-xl p-3">
-                <div className="text-xl mb-1">📝</div>
-                <p className="text-white text-xs font-medium mb-1">Wikipedia</p>
-                <p className="text-gray-500 text-xs">Read a quick overview of this topic</p>
-                <button
-                  onClick={() => {
-                    intentionalTabRef.current = true;
-                    const query = encodeURIComponent(`${session.goal}`);
-                    window.open(`https://en.wikipedia.org/w/index.php?search=${query}`, '_blank');
-                  }}
-                  className="mt-2 text-xs bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 text-yellow-400 px-2 py-1 rounded-lg transition-all w-full"
-                >
-                  Open Wikipedia →
-                </button>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xl">📖</span>
+                    <p className="text-white text-xs font-medium">Key Points</p>
+                  </div>
+                  {wikiSummary && !wikiLoading && (
+                    <button
+                      onClick={() => setWikiExpanded(prev => !prev)}
+                      className="text-gray-500 text-xs hover:text-gray-300 transition-colors"
+                    >
+                      {wikiExpanded ? 'Less ↑' : 'More ↓'}
+                    </button>
+                  )}
+                </div>
+
+                {wikiLoading && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <svg className="w-3 h-3 animate-spin text-yellow-400" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    <p className="text-gray-500 text-xs animate-pulse">Loading from Wikipedia...</p>
+                  </div>
+                )}
+
+                {wikiSummary && !wikiLoading && (
+                  <div className={`overflow-hidden transition-all duration-300 ${wikiExpanded ? 'max-h-48' : 'max-h-12'}`}>
+                    <p className="text-gray-300 text-xs leading-relaxed">{wikiSummary}</p>
+                  </div>
+                )}
+
+                {!wikiSummary && !wikiLoading && (
+                  <p className="text-gray-500 text-xs mt-1">Quick topic overview from Wikipedia</p>
+                )}
+
+                {wikiSummary && !wikiLoading && (
+                  <div className="mt-2 pt-2 border-t border-dark-500 flex gap-2">
+                    <button
+                      onClick={() => setWikiExpanded(prev => !prev)}
+                      className="flex-1 text-xs bg-dark-600 hover:bg-dark-500 border border-dark-400 text-gray-400 px-2 py-1 rounded-lg transition-all"
+                    >
+                      {wikiExpanded ? '↑ Collapse' : '↓ Read More'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        intentionalTabRef.current = true;
+                        const query = encodeURIComponent(`${session.goal}`);
+                        window.open(`https://en.wikipedia.org/w/index.php?search=${query}`, '_blank');
+                      }}
+                      className="flex-1 text-xs bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 text-yellow-400 px-2 py-1 rounded-lg transition-all"
+                    >
+                      Full Article →
+                    </button>
+                  </div>
+                )}
+
+                {!wikiSummary && !wikiLoading && (
+                  <button
+                    onClick={() => {
+                      intentionalTabRef.current = true;
+                      const query = encodeURIComponent(`${session.goal}`);
+                      window.open(`https://en.wikipedia.org/w/index.php?search=${query}`, '_blank');
+                    }}
+                    className="mt-2 text-xs bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 text-yellow-400 px-2 py-1 rounded-lg transition-all w-full"
+                  >
+                    Open Wikipedia →
+                  </button>
+                )}
               </div>
             <div className="bg-dark-700 border border-dark-500 rounded-xl p-3 col-span-2">
                 <div className="text-xl mb-1">🧒</div>
